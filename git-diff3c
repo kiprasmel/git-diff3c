@@ -1,0 +1,201 @@
+#!/usr/bin/env node
+
+"use strict"
+
+const os = require("os")
+const fs = require("fs")
+const path = require("path")
+const assert = require("assert")
+const { execSync } = require("child_process")
+
+/**
+ * assumes one of:
+ * - merge.conflictStyle =  diff3
+ * - merge.conflictStyle = zdiff3
+ *
+*/
+const boundaries = {
+	BEGIN: "<<<<<<<",
+	// everything in new_old
+	END_NEW_OLD: "|||||||",
+	// everything in old
+	END_OLD: "=======",
+	// everything in new
+	END: ">>>>>>>",
+}
+
+function main() {
+	let filepaths
+
+	const filepathArg = process.argv[2]
+	if (filepathArg) {
+		filepaths = filepathArg.split(",")
+	} else {
+		/**
+		 * man git-status 
+		 * /OUTPUT
+		 */
+		const filepathsCmd = "git status --porcelain=v1 | grep '^UU' | awk '{ print $2 }'"
+		filepaths = execSync(filepathsCmd, { encoding: "utf-8" }).split("\n").filter(x => !!x.trim())
+	}
+
+	log({ filepaths })
+
+	let conflicts = []
+
+	for (const fp of filepaths) {
+		const conflictsOfFile = processFile(fp)
+		conflicts.push(conflictsOfFile)
+	}
+
+	conflicts = conflicts.flat()
+
+	const sep = "\n---\n---\n---\n\n"
+	const dir = fs.mkdtempSync(path.join(os.tmpdir(), "conflicts-"))
+	log({
+		dir,
+	})
+
+	for (let i = 0; i < conflicts.length; i++) {
+		const conflict = conflicts[i]
+
+		const fNewOld = path.join(dir, `${i}.new_old`)
+		const fOld = path.join(dir, `${i}.old`)
+		const fNew = path.join(dir, `${i}.new`)
+		fs.writeFileSync(fNewOld, conflict.str2NewOld, { encoding: "utf-8" })
+		fs.writeFileSync(fOld, conflict.str3old, { encoding: "utf-8" })
+		fs.writeFileSync(fNew, conflict.str4new, { encoding: "utf-8" })
+
+		//const hasDiffSoFancy = execSync("which diff-so-fancy")
+
+		const cmd1 = `diff -u -w -b ${fOld} ${fNewOld}` + " | diff-so-fancy"
+		const cmd2 = `diff -u -w -b ${fOld} ${fNew}`    + " | diff-so-fancy"
+
+		log({ 
+			cmd1,
+			cmd2,
+		})
+
+		process.stdout.write(sep)
+		execSync(cmd1, { encoding: "utf-8", stdio: "inherit" })
+		execSync(cmd2, { encoding: "utf-8", stdio: "inherit" })
+	}
+
+	process.stdout.write(sep)
+}
+
+function processFile(filepath) {
+	log({ filepath })
+	const file = fs.readFileSync(filepath).toString()
+	const chars = file.split("")
+
+	// const peekNextK = (i, k) => chars.slice(i, i+k).join("")
+	const peekNextK = (i, k) => file.substring(i, i+k)
+	const isBoundary = (i, b) => peekNextK(i, b.length) === b
+	
+	const isBegin     = i => isBoundary(i, boundaries.BEGIN)
+	const isEndNewOld = i => isBoundary(i, boundaries.END_NEW_OLD)
+	const isEndOld    = i => isBoundary(i, boundaries.END_OLD)
+	const isEnd       = i => isBoundary(i, boundaries.END)
+	
+	const isEOF = i => i >= chars.length
+
+	const conflicts = []
+
+	for (let i = 0; i < chars.length; i++) {
+		const isB = isBegin(i)
+		if (!isB) {
+			continue
+		}
+
+		i += boundaries.BEGIN.length
+
+		let startNewOld =  i
+		let endNewOld   = -1
+
+		let startOld    = -1
+		let endOld      = -1
+
+		let startNew    = -1
+		let endNew      = -1
+
+		while (!isEnd(i) && !isEOF(i)) {
+			i++
+
+			if (isEndNewOld(i)) {
+				if (endNewOld === -1) {
+					endNewOld = i
+					i += boundaries.END_NEW_OLD.length
+					startOld = i
+				} else {
+					throw duplicateErr(boundaries.END_NEW_OLD, endNewOld, i)
+				}
+			} else if (isEndOld(i)) {
+				if (endOld === -1) {
+					endOld = i
+					i += boundaries.END_OLD.length
+					startNew = i
+				} else {
+					throw duplicateErr(boundaries.END_OLD, endOld, i)
+				}
+			}
+		}
+
+		if (isEnd(i)) {
+			endNew = i
+		} else {
+			assert(isEOF(i))
+			const msg = `found begin marker, reached EOF, did not find ending marker (${boundaries.END})`
+			throw new Error(msg)
+		}
+
+		//assert(end > endOld)
+		//assert(endOld > endNewOld)
+		//assert(endNewOld > start)
+
+		const str1full   = file.substring(startNewOld, endNew)
+
+		// TODO -1
+		const str2NewOld = file.substring(startNewOld, endNewOld)
+		const str3old    = file.substring(startOld, endOld)
+		const str4new    = file.substring(startNew, endNew)
+
+		const conflict = {
+			startNewOld,
+			endNewOld,
+			//
+			startOld,
+			endOld,
+			//
+			startNew,
+			endNew,
+			//
+			str1full,
+			str2NewOld,
+			str3old,
+			str4new,
+		}
+
+		conflicts.push(conflict)
+	}
+
+	return conflicts
+}
+
+function log (...xs) {
+	if (process.env.DEBUG) {
+		console.log(...xs)
+	}
+}
+
+function duplicateErr() {
+	const msg = `found more than one marker for ${boundaries.END_NEW_OLD} within the same boundary.`
+			+ `\nfirst at position ${endNewOld}, second at ${i}.\n`
+
+	return new Error(msg)
+}
+
+if (!module.parent) {
+	main()
+}
+

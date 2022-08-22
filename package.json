@@ -1,0 +1,10 @@
+{
+	"name": "git-diff3c",
+	"version": "0.0.0",
+	"main": "git-diff3c",
+	"repository": "git@github.com:kiprasmel/git-diff3.git",
+	"author": "Kipras Melnikovas <kipras@kipras.org> (http://kipras.org/)",
+	"bin": {
+		"git-diff3c": "./git-diff3c"
+	}
+}
