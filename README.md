@@ -13,7 +13,27 @@ dependencies:
 	- diff-so-fancy (e.g. `npm i -g diff-so-fancy`)
 
 ```sh
+npm i -g yarn diff-so-fancy
+```
+
+### install
+
+```sh
+git clone https://github.com/kiprasmel/git-diff3c.git
+# or:  git clone git@github.com:kiprasmel/git-diff3c.git
+
+cd git-diff3c
+
 ./setup-and-update.sh
+
+git config --global merge.conflictStyle=zdiff3
+# https://git-scm.com/docs/git-merge#Documentation/git-merge.txt-mergeconflictStyle
+```
+
+and add to `~/.profile` or equiv:
+
+```sh
+export PATH="$(yarn global dir)/node_modules/.bin:$PATH"
 ```
 
 ## usage
