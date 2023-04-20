@@ -1,7 +1,7 @@
 {
 	"name": "git-diff3c",
 	"description": "solve merge conflicts fast",
-	"version": "0.1.0",
+	"version": "0.1.1",
 	"main": "git-diff3c",
 	"repository": "git@github.com:kiprasmel/git-diff3.git",
 	"author": "Kipras Melnikovas <kipras@kipras.org> (http://kipras.org/)",
