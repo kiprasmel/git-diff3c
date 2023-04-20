@@ -66,10 +66,11 @@ function main() {
 		fs.writeFileSync(fOld, conflict.str3old, { encoding: "utf-8" })
 		fs.writeFileSync(fNew, conflict.str4new, { encoding: "utf-8" })
 
-		//const hasDiffSoFancy = execSync("which diff-so-fancy")
+		const hasDiffSoFancy = trySync(() => execSync("which diff-so-fancy"), () => true, () => false)
+		const extra = hasDiffSoFancy ? " | diff-so-fancy" : ""
 
-		const cmd1 = `diff -u -w -b ${fOld} ${fNewOld}` + " | diff-so-fancy"
-		const cmd2 = `diff -u -w -b ${fOld} ${fNew}`    + " | diff-so-fancy"
+		const cmd1 = `diff -u -w -b ${fOld} ${fNewOld}` + extra
+		const cmd2 = `diff -u -w -b ${fOld} ${fNew}`    + extra
 
 		log({ 
 			cmd1,
@@ -193,6 +194,15 @@ function duplicateErr() {
 			+ `\nfirst at position ${endNewOld}, second at ${i}.\n`
 
 	return new Error(msg)
+}
+
+function trySync(cb, succ, fail) {
+	try {
+		cb()
+		return succ()
+	} catch (e) {
+		return fail(e)
+	}
 }
 
 if (!module.parent) {
