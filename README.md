@@ -26,8 +26,9 @@ cd git-diff3c
 
 ./setup-and-update.sh
 
-git config --global merge.conflictStyle=zdiff3
 # https://git-scm.com/docs/git-merge#Documentation/git-merge.txt-mergeconflictStyle
+git config --global merge.conflictStyle zdiff3
+
 ```
 
 and add to `~/.profile` or equiv:
