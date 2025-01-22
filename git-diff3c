@@ -51,35 +51,43 @@ function main() {
 	conflicts = conflicts.flat()
 
 	const sep = "\n---\n---\n---\n\n"
-	const dir = fs.mkdtempSync(path.join(os.tmpdir(), "conflicts-"))
-	log({
-		dir,
-	})
 
 	for (let i = 0; i < conflicts.length; i++) {
 		const conflict = conflicts[i]
+		const origDir      = path.dirname(filepaths[i])
+		const origFilename = path.basename(filepaths[i])
 
-		const fNewOld = path.join(dir, `${i}.new_old`)
-		const fOld = path.join(dir, `${i}.old`)
-		const fNew = path.join(dir, `${i}.new`)
+		const fNewOld = path.join(dir, origDir, "new_old:" + origFilename)
+		const fOld    = path.join(dir, origDir, "OLD:"     + origFilename)
+		const fNew    = path.join(dir, origDir, "new:"     + origFilename)
+
+		fs.mkdirSync(path.dirname(fNewOld), { recursive: true })
+
 		fs.writeFileSync(fNewOld, conflict.str2NewOld, { encoding: "utf-8" })
 		fs.writeFileSync(fOld, conflict.str3old, { encoding: "utf-8" })
 		fs.writeFileSync(fNew, conflict.str4new, { encoding: "utf-8" })
 
+		const hasGitPagerSet = "GIT_PAGER" in process.env
+		const gitPager = (process.env.GIT_PAGER || "").trim()
 		const hasDiffSoFancy = trySync(() => execSync("which diff-so-fancy"), () => true, () => false)
-		const extra = hasDiffSoFancy ? " | diff-so-fancy" : ""
+		const extra = hasGitPagerSet
+			? !!gitPager
+				? " | " + gitPager
+				: ""
+			: hasDiffSoFancy
+				? " | diff-so-fancy"
+				: ""
+		
+		log({extra})
 
 		const cmd1 = `diff -u -w -b ${fOld} ${fNewOld}` + extra
 		const cmd2 = `diff -u -w -b ${fOld} ${fNew}`    + extra
 
-		log({ 
-			cmd1,
-			cmd2,
-		})
+		log({ cmd1, cmd2 })
 
 		process.stdout.write(sep)
-		execSync(cmd1, { encoding: "utf-8", stdio: "inherit" })
-		execSync(cmd2, { encoding: "utf-8", stdio: "inherit" })
+		trySync(() => execSync(cmd1, { encoding: "utf-8", stdio: "inherit" }))
+		trySync(() => execSync(cmd2, { encoding: "utf-8", stdio: "inherit" }))
 	}
 
 	process.stdout.write(sep)
@@ -196,7 +204,7 @@ function duplicateErr() {
 	return new Error(msg)
 }
 
-function trySync(cb, succ, fail) {
+function trySync(cb, succ = () => {}, fail = () => {}) {
 	try {
 		cb()
 		return succ()
