@@ -16,15 +16,22 @@ const { execSync } = require("child_process")
 */
 const boundaries = {
 	BEGIN: "<<<<<<<",
-	// everything in new_old
+	// everything in new_old (LOCAL)
 	END_NEW_OLD: "|||||||",
-	// everything in old
+	// everything in old     (BASE)
 	END_OLD: "=======",
-	// everything in new
+	// everything in new     (REMOTE)
 	END: ">>>>>>>",
 }
 
 function main() {
+	const workdir = execSync(`git rev-parse --show-toplevel`, { encoding: "utf-8" }).trim()
+	const workdirName = path.basename(workdir)
+	const headCommit = execSync(`git rev-parse --short HEAD`, { encoding: "utf-8" }).trim()
+	const dir = path.join("/tmp", "diff3c", workdirName, headCommit)
+	log({ dir })
+	fs.mkdirSync(dir, { recursive: true })
+
 	let filepaths
 
 	const filepathArg = process.argv[2]
@@ -40,57 +47,69 @@ function main() {
 	}
 
 	log({ filepaths })
+	filepaths = filepaths.map(x => path.join(workdir, x))
 
-	let conflicts = []
+	let conflicts2d = []
 
 	for (const fp of filepaths) {
 		const conflictsOfFile = processFile(fp)
-		conflicts.push(conflictsOfFile)
+		conflicts2d.push(conflictsOfFile)
 	}
 
-	conflicts = conflicts.flat()
+	const sep = "\n----\n----\n----\n\n"
+	const minisep = "\n--\n--\n--\n\n"
 
-	const sep = "\n---\n---\n---\n\n"
+	const hasGitPagerSet = "GIT_PAGER" in process.env
+	const gitPager = (process.env.GIT_PAGER || "").trim()
+	const hasDiffSoFancy = trySync(() => execSync("which diff-so-fancy"), () => true, () => false)
+	const extra = hasGitPagerSet
+		? !!gitPager
+			? " | " + gitPager
+			: ""
+		: hasDiffSoFancy
+			? " | diff-so-fancy"
+			: ""
+	
+	log({filepaths, conflicts2d: conflicts2d[1], extra})
+	conflicts2d = conflicts2d
 
-	for (let i = 0; i < conflicts.length; i++) {
-		const conflict = conflicts[i]
+	for (let i = 0; i < filepaths.length; i++) {
+		process.stdout.write(sep)
+
 		const origDir      = path.dirname(filepaths[i])
 		const origFilename = path.basename(filepaths[i])
 
-		const fNewOld = path.join(dir, origDir, "new_old:" + origFilename)
-		const fOld    = path.join(dir, origDir, "OLD:"     + origFilename)
-		const fNew    = path.join(dir, origDir, "new:"     + origFilename)
+		const fileConflicts = conflicts2d[i]
+		const fileConflictCount = fileConflicts.length
+		for (let j = 0; j < fileConflictCount; j++) {
+			const conflict = fileConflicts[j]
 
-		fs.mkdirSync(path.dirname(fNewOld), { recursive: true })
+			const prefix = fileConflictCount === 1 ? "" : (j + 1).toString()
+			const fNewOld = path.join(dir, origDir, prefix, "new_old:" + origFilename)
+			const fOld    = path.join(dir, origDir, prefix, "OLD:"     + origFilename)
+			const fNew    = path.join(dir, origDir, prefix, "new:"     + origFilename)
 
-		fs.writeFileSync(fNewOld, conflict.str2NewOld, { encoding: "utf-8" })
-		fs.writeFileSync(fOld, conflict.str3old, { encoding: "utf-8" })
-		fs.writeFileSync(fNew, conflict.str4new, { encoding: "utf-8" })
+			fs.mkdirSync(path.dirname(fNewOld), { recursive: true })
 
-		const hasGitPagerSet = "GIT_PAGER" in process.env
-		const gitPager = (process.env.GIT_PAGER || "").trim()
-		const hasDiffSoFancy = trySync(() => execSync("which diff-so-fancy"), () => true, () => false)
-		const extra = hasGitPagerSet
-			? !!gitPager
-				? " | " + gitPager
-				: ""
-			: hasDiffSoFancy
-				? " | diff-so-fancy"
-				: ""
-		
-		log({extra})
+			fs.writeFileSync(fNewOld, conflict.str2NewOld, { encoding: "utf-8" })
+			fs.writeFileSync(fOld, conflict.str3old, { encoding: "utf-8" })
+			fs.writeFileSync(fNew, conflict.str4new, { encoding: "utf-8" })
 
-		const cmd1 = `diff -u -w -b ${fOld} ${fNewOld}` + extra
-		const cmd2 = `diff -u -w -b ${fOld} ${fNew}`    + extra
+			const cmd1 = `diff -u -w -b ${fOld} ${fNewOld}` + extra
+			const cmd2 = `diff -u -w -b ${fOld} ${fNew}`    + extra
 
-		log({ cmd1, cmd2 })
+			log({ cmd1, cmd2 });
+
+			if ((i != 0 && i != fileConflicts.length - 1) || (fileConflicts.length === 2 && j != 0)) {
+				process.stdout.write(minisep)
+			}
+			trySync(() => execSync(cmd1, { encoding: "utf-8", stdio: "inherit" }))
+			trySync(() => execSync(cmd2, { encoding: "utf-8", stdio: "inherit" }))
+		}
 
 		process.stdout.write(sep)
-		trySync(() => execSync(cmd1, { encoding: "utf-8", stdio: "inherit" }))
-		trySync(() => execSync(cmd2, { encoding: "utf-8", stdio: "inherit" }))
 	}
 
-	process.stdout.write(sep)
 }
 
 function processFile(filepath) {
