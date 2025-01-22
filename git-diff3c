@@ -95,8 +95,8 @@ function main() {
 			fs.writeFileSync(fOld, conflict.str3old, { encoding: "utf-8" })
 			fs.writeFileSync(fNew, conflict.str4new, { encoding: "utf-8" })
 
-			const cmd1 = `diff -u -w -b ${fOld} ${fNewOld}` + extra
-			const cmd2 = `diff -u -w -b ${fOld} ${fNew}`    + extra
+			const cmd1 = `diff -u -w -b "${fOld}" "${fNewOld}"` + extra
+			const cmd2 = `diff -u -w -b "${fOld}" "${fNew}"`    + extra
 
 			log({ cmd1, cmd2 });
 
